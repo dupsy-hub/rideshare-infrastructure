@@ -5,11 +5,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30s"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "120s"
-    nginx.ingress.kubernetes.io/client-max-body-size: "20m"
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    acme.cert-manager.io/http01-edit-in-place: "true"
 spec:
   ingressClassName: nginx
   tls:
@@ -31,9 +27,16 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: matching-service
+                name: ride-matching-service
                 port:
                   number: 8002
+          - path: /api/payments
+            pathType: Prefix
+            backend:
+              service:
+                name: payment-service
+                port:
+                  number: 8000
           - path: /api/notifications
             pathType: Prefix
             backend:
@@ -41,10 +44,3 @@ spec:
                 name: notification-service
                 port:
                   number: 8000
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: payment-service
-                port:
-                  number: 80
