@@ -38,7 +38,7 @@ jobs:
       - name: Validate Kubernetes manifests
         run: |
           echo "Validating manifests..."
-          kubectl --dry-run=client apply -f storage-classes.yaml
+          kubectl --dry-run=client apply -f azure-setup/storage-classes.yaml
           kubectl --dry-run=client apply -f data-layer/
           kubectl --dry-run=client apply -f networking/ingress-rules.yaml
 
