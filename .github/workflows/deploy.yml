@@ -6,7 +6,7 @@ on:
     paths:
       - "data-layer/**"
       - "networking/**"
-      - "storage-classes.yaml"
+      - "azure-setup/storage-classes.yaml"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
