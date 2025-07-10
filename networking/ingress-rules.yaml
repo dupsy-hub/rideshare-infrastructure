@@ -2,42 +2,45 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: rideshare-ingress
+  namespace: rideshare
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    #nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
-  tls:
-    - hosts:
-        - teleiosdupe.jointeleios.com
-      secretName: teleiosdupe-tls-secret
   rules:
-    - host: teleiosdupe.jointeleios.com
+    - host: teleiosdupsy.westus.cloudapp.azure.com
       http:
         paths:
-          - path: /api/users
+          - path: /api/users/docs
             pathType: Prefix
             backend:
               service:
                 name: user-service
                 port:
                   number: 8000
-          - path: /api/rides
+          - path: /api/users/health
             pathType: Prefix
             backend:
               service:
-                name: ride-matching-service
+                name: user-service
                 port:
-                  number: 8002
-          - path: /api/payments
+                  number: 8000
+
+          - path: /api/payments/
             pathType: Prefix
             backend:
               service:
                 name: payment-service
                 port:
                   number: 8000
-          - path: /api/notifications
+          - path: /api/rides/
+            pathType: Prefix
+            backend:
+              service:
+                name: ride-matching-service
+                port:
+                  number: 8002
+          - path: /api/notifications/
             pathType: Prefix
             backend:
               service:
