@@ -4,24 +4,25 @@ on:
   push:
     branches: [main]
     paths:
-      - "data-layer/**"
       - "networking/**"
-      - "azure-setup/storage-classes.yaml"
+      - "data-layer/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 env:
   AKS_RESOURCE_GROUP: teleios-dupe-rg
   AKS_CLUSTER_NAME: rideshare-aks-cluster
+  NAMESPACE: rideshare
 
 jobs:
   deploy-infrastructure:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Log in to Azure
+      - name: Azure Login
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -35,50 +36,77 @@ jobs:
             --overwrite-existing
           kubelogin convert-kubeconfig -l azurecli
 
-      - name: Validate Kubernetes manifests
+      - name: Validate manifests
         run: |
-          echo "Validating manifests..."
-          kubectl --dry-run=client apply -f azure-setup/storage-classes.yaml
+          echo "Validating Kubernetes manifests..."
+          kubectl --dry-run=client apply -f storage-classes.yaml
           kubectl --dry-run=client apply -f data-layer/
           kubectl --dry-run=client apply -f networking/ingress-rules.yaml
 
-      - name: Deploy PostgreSQL infrastructure
+      - name: Create shared secrets
         run: |
-          echo "Deploying PostgreSQL secrets..."
-          kubectl apply -f data-layer/postgresql-secret.yaml
+          kubectl create secret generic rideshare-secrets \
+            --from-literal=USER_DATABASE_URL=${{ secrets.USER_DATABASE_URL }} \
+            --from-literal=REDIS_URL=${{ secrets.REDIS_URL }} \
+            --from-literal=JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }} \
+            --dry-run=client -o yaml | kubectl apply -f - -n ${{ env.NAMESPACE }}
 
-          echo "Deploying PostgreSQL headless service..."
-          kubectl apply -f data-layer/postgresql-headless-service.yaml
-
-          echo "Deploying PostgreSQL primary..."
-          kubectl apply -f data-layer/postgresql-primary-statefulset.yaml
-
-          echo "Deploying PostgreSQL replica..."
-          kubectl apply -f data-layer/postgresql-replica-statefulset.yaml
-
-      - name: Deploy Redis infrastructure
+      - name: Create microservice secrets
         run: |
-          echo "Deploying Redis configuration..."
-          kubectl apply -f data-layer/redis-configmap.yaml
+          kubectl create secret generic user-service-secrets \
+            --from-literal=USER_DATABASE_URL=${{ secrets.USER_DATABASE_URL }} \
+            --dry-run=client -o yaml | kubectl apply -f - -n ${{ env.NAMESPACE }}
 
-          echo "Deploying Redis headless service..."
-          kubectl apply -f data-layer/redis-headless-service.yaml
+          kubectl create secret generic payment-service-secrets \
+            --from-literal=PAYMENT_DATABASE_URL=${{ secrets.PAYMENT_DATABASE_URL }} \
+            --dry-run=client -o yaml | kubectl apply -f - -n ${{ env.NAMESPACE }}
 
-          echo "Deploying Redis cluster..."
-          kubectl apply -f data-layer/redis-statefulset.yaml
+          kubectl create secret generic ride-matching-service-secrets \
+            --from-literal=RIDES_DATABASE_URL=${{ secrets.RIDES_DATABASE_URL }} \
+            --from-literal=JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }} \
+            --dry-run=client -o yaml | kubectl apply -f - -n ${{ env.NAMESPACE }}
 
-      - name: Deploy ingress rules
+          kubectl create secret generic notification-service-secrets \
+            --from-literal=NOTIFY_DATABASE_URL=${{ secrets.NOTIFY_DATABASE_URL }} \
+            --from-literal=JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }} \
+            --from-literal=REDIS_URL=${{ secrets.REDIS_URL }} \
+            --from-literal=SENDGRID_API_KEY=${{ secrets.SENDGRID_API_KEY }} \
+            --from-literal=SENDGRID_FROM_EMAIL=${{ secrets.SENDGRID_FROM_EMAIL }} \
+            --from-literal=FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }} \
+            --from-literal=FIREBASE_CREDENTIALS_PATH=${{ secrets.FIREBASE_CREDENTIALS_PATH }} \
+            --dry-run=client -o yaml | kubectl apply -f - -n ${{ env.NAMESPACE }}
+
+      - name: Apply ingress rules
+        run: kubectl apply -f networking/ingress-rules.yaml -n ${{ env.NAMESPACE }}
+
+      - name: Deploy microservice workloads
         run: |
-          echo "Deploying ingress rules..."
-          kubectl apply -f networking/ingress-rules.yaml
+          kubectl apply -f rideshare-user-service/k8s/deployment.yaml -n ${{ env.NAMESPACE }}
+          kubectl apply -f rideshare-payment-service/k8s/deployment.yaml -n ${{ env.NAMESPACE }}
+          kubectl apply -f rideshare-ride-matching-service/k8s/deployment.yaml -n ${{ env.NAMESPACE }}
+          kubectl apply -f rideshare-notification-service/k8s/deployment.yaml -n ${{ env.NAMESPACE }}
 
-      - name: Wait for deployments
+      # - name: Rollout status checks
+      #   run: |
+      #     kubectl rollout status deployment/user-service -n ${{ env.NAMESPACE }} --timeout=180s
+      #     kubectl rollout status deployment/payment-service -n ${{ env.NAMESPACE }} --timeout=180s
+      #     kubectl rollout status deployment/ride-matching-service -n ${{ env.NAMESPACE }} --timeout=180s
+      #     kubectl rollout status deployment/notification-service -n ${{ env.NAMESPACE }} --timeout=180s
+
+  setup-frontdoor:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Setup Azure Front Door
         run: |
-          echo "Waiting for PostgreSQL primary to be ready..."
-          kubectl rollout status statefulset/postgresql-primary --timeout=300s
-
-          echo "Waiting for PostgreSQL replica to be ready..."
-          kubectl rollout status statefulset/postgresql-replica --timeout=300s
-
-          echo "Waiting for Redis cluster to be ready..."
-          kubectl rollout status statefulset/redis --timeout=300s
+          chmod +x azure-setup/configure-frontdoor.sh
+          azure-setup/configure-frontdoor.sh

@@ -1,0 +1,4 @@
+# Secrets and Environment Configs
+*.env
+secrets.yaml
+postgresql-secret.yaml

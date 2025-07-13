@@ -4,46 +4,36 @@ metadata:
   name: rideshare-ingress
   namespace: rideshare
   annotations:
-    #nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    #nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    #cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
   rules:
     - host: teleiosdupsy.westus.cloudapp.azure.com
       http:
         paths:
-          - path: /api/users/docs
-            pathType: Prefix
-            backend:
-              service:
-                name: user-service
-                port:
-                  number: 8000
-          - path: /api/users/health
-            pathType: Prefix
-            backend:
-              service:
-                name: user-service
-                port:
-                  number: 8000
-
-          - path: /api/payments/
-            pathType: Prefix
-            backend:
-              service:
-                name: payment-service
-                port:
-                  number: 8000
-          - path: /api/rides/
-            pathType: Prefix
+          - path: /api/rides(/|$)(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: ride-matching-service
                 port:
                   number: 8002
-          - path: /api/notifications/
-            pathType: Prefix
+          - path: /api/payments(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: payment-service
+                port:
+                  number: 8001
+          - path: /api/notifications(/|$)(.*)
+            pathType: ImplementationSpecific
             backend:
               service:
                 name: notification-service
                 port:
-                  number: 8000
+                  number: 8003
